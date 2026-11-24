@@ -13,7 +13,7 @@ const usage = `Usage:
   mmcli send --channel LIST --text LIST
   mmcli read [--limit N] [--channel LIST] [--cursor TOKEN]
   mmcli mark-read --msg-id LIST
-  mmcli list-channels
+  mmcli list-channels [--force]
 `
 
 type sendResult struct {
@@ -63,6 +63,7 @@ func run(args []string, out io.Writer) error {
 	flags.SetOutput(io.Discard)
 	var channels, messages, ids, cursorToken string
 	var limit int
+	var force bool
 	switch command {
 	case "--help", "-h", "help":
 		_, err := io.WriteString(out, usage)
@@ -77,6 +78,7 @@ func run(args []string, out io.Writer) error {
 	case "mark-read":
 		flags.StringVar(&ids, "msg-id", "", "message IDs")
 	case "list-channels":
+		flags.BoolVar(&force, "force", false, "refresh the channel cache from Mattermost")
 	default:
 		return fmt.Errorf("unknown command %q (see --help)", command)
 	}
@@ -124,12 +126,12 @@ func run(args []string, out io.Writer) error {
 	if command == "send" {
 		return send(client, channelIDs, texts, out)
 	}
+	if command == "list-channels" {
+		return listChannels(client, force, out)
+	}
 	user, err := client.currentUser()
 	if err != nil {
 		return err
-	}
-	if command == "list-channels" {
-		return listChannels(client, user, out)
 	}
 	scope := digest(client.base, user.ID)
 	markers, err := markerDirectory(scope)

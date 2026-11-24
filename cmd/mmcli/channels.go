@@ -3,7 +3,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"slices"
 	"strings"
@@ -23,10 +22,18 @@ type listedChannel struct {
 	VisualName string `json:"visual-name"`
 }
 
-func listChannels(client *apiClient, me user, out io.Writer) error {
-	channels, err := client.availableChannels(me.ID)
+type channelList struct {
+	Channels []listedChannel `json:"channels"`
+}
+
+func (c *apiClient) fetchChannelList() (channelList, error) {
+	me, err := c.currentUser()
 	if err != nil {
-		return err
+		return channelList{}, err
+	}
+	channels, err := c.availableChannels(me.ID)
+	if err != nil {
+		return channelList{}, err
 	}
 
 	ids := make([]string, 0, len(channels))
@@ -36,9 +43,7 @@ func listChannels(client *apiClient, me user, out io.Writer) error {
 	slices.Sort(ids)
 
 	names := map[string]string{me.ID: me.visualName()}
-	result := struct {
-		Channels []listedChannel `json:"channels"`
-	}{Channels: make([]listedChannel, 0, len(channels))}
+	result := channelList{Channels: make([]listedChannel, 0, len(channels))}
 	for _, id := range ids {
 		ch := channels[id]
 		visibility, name := "private", ch.DisplayName
@@ -48,9 +53,9 @@ func listChannels(client *apiClient, me user, out io.Writer) error {
 		case "P":
 		case "D", "G":
 			if ch.Type == "D" || name == "" {
-				name, err = client.chatName(ch, me.ID, names)
+				name, err = c.chatName(ch, me.ID, names)
 				if err != nil {
-					return fmt.Errorf("name chat %q: %w", ch.ID, err)
+					return channelList{}, fmt.Errorf("name chat %q: %w", ch.ID, err)
 				}
 			}
 		default:
@@ -64,7 +69,7 @@ func listChannels(client *apiClient, me user, out io.Writer) error {
 		}
 		result.Channels = append(result.Channels, listedChannel{ID: id, Visibility: visibility, VisualName: name})
 	}
-	return writeJSON(out, result)
+	return result, nil
 }
 
 func (c *apiClient) availableChannels(userID string) (map[string]channel, error) {

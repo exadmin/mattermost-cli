@@ -15,6 +15,7 @@ import (
 
 type apiClient struct {
 	base  string
+	host  string
 	token string
 	http  *http.Client
 }
@@ -59,6 +60,7 @@ func loadClient() (*apiClient, error) {
 	base.Host = strings.ToLower(base.Host)
 	return &apiClient{
 		base:  strings.TrimRight(base.String(), "/"),
+		host:  base.Hostname(),
 		token: token,
 		http: &http.Client{
 			Timeout: 30 * time.Second,

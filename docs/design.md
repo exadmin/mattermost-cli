@@ -72,7 +72,7 @@ The Mattermost API marks entire channels as read. To support marking individual 
 ## `mmcli list-channels`
 
 ```text
-mmcli list-channels
+mmcli list-channels [--force]
 ```
 
 The command lists active public channels visible in the user's teams, private
@@ -88,6 +88,17 @@ is the channel's display name, the direct chat participant's name, or the group 
 display name. An unnamed group chat uses the other participants' names.
 Participant names use the available first and last name, falling back to the
 username or user ID. A chat with oneself uses the current user's name.
+
+The command caches successful results in `~/.mmcli/cache/<domain>/list-channels.json`.
+The directory uses the lowercase Mattermost hostname, with no scheme, port or URL
+path. Characters unsuitable for a directory name are replaced with hyphens.
+The cache stores the result and a fingerprint derived from the configured server
+URL and token. A matching cache file modified less than one hour ago is used
+without contacting Mattermost.
+
+A missing, expired, invalid or mismatched cache triggers a server request.
+`--force` always fetches from Mattermost. A successful fetch replaces the cache.
+A failed fetch keeps any previous file and reports the error.
 
 ## Lists and quoting
 
