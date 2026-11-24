@@ -14,10 +14,11 @@ import (
 )
 
 type apiClient struct {
-	base  string
-	host  string
-	token string
-	http  *http.Client
+	base          string
+	host          string
+	token         string
+	eachMsgSuffix string
+	http          *http.Client
 }
 
 type apiStatusError int
@@ -36,11 +37,12 @@ func loadClient() (*apiClient, error) {
 		return nil, fmt.Errorf("cannot read settings file: %w", err)
 	}
 	var settings struct {
-		URL   string
-		Token string
+		URL           string
+		Token         string
+		EachMsgSuffix string `json:"EACH_MSG_SUFFIX"`
 	}
 	if json.Unmarshal(data, &settings) != nil {
-		return nil, errors.New("invalid settings JSON: expected an object with string URL and TOKEN fields")
+		return nil, errors.New("invalid settings JSON: expected string URL and TOKEN fields and an optional string EACH_MSG_SUFFIX")
 	}
 	if strings.TrimSpace(settings.URL) == "" {
 		return nil, errors.New("settings URL is required")
@@ -59,9 +61,10 @@ func loadClient() (*apiClient, error) {
 	}
 	base.Host = strings.ToLower(base.Host)
 	return &apiClient{
-		base:  strings.TrimRight(base.String(), "/"),
-		host:  base.Hostname(),
-		token: token,
+		base:          strings.TrimRight(base.String(), "/"),
+		host:          base.Hostname(),
+		token:         token,
+		eachMsgSuffix: settings.EachMsgSuffix,
 		http: &http.Client{
 			Timeout: 30 * time.Second,
 			CheckRedirect: func(*http.Request, []*http.Request) error {

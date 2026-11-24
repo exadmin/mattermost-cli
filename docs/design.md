@@ -9,11 +9,16 @@ The `MM_CLI_SETTINGS_PATH` environment variable specifies the path to the JSON f
 ```json
 {
   "URL": "https://mattermost.example.com",
-  "TOKEN": "your-personal-access-token"
+  "TOKEN": "your-personal-access-token",
+  "EACH_MSG_SUFFIX": ""
 }
 ```
 
 `URL` is the base address of the Mattermost server. `TOKEN` is the token of the user on whose behalf commands run. Future settings go in the same file.
+
+`EACH_MSG_SUFFIX` is an optional string that defaults to an empty string.
+`mmcli send` appends it directly to each parsed message. Include any desired
+spaces or line breaks in the suffix itself.
 
 If the variable is unset, the file is inaccessible, the JSON is invalid, or a required value is missing, the command exits with a nonzero status and reports the cause without printing the token.
 

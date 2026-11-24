@@ -174,6 +174,7 @@ func run(args []string, out io.Writer) error {
 func send(client *apiClient, channels, texts []string, out io.Writer) error {
 	var result sendResult
 	for index, message := range texts {
+		message += client.eachMsgSuffix
 		for _, channel := range channels {
 			body := map[string]string{"channel_id": channel, "message": message}
 			if err := client.request("POST", "/posts", nil, body, nil); err != nil {
