@@ -42,6 +42,14 @@ func (c *apiClient) channelList(force bool) (channelList, error) {
 }
 
 func channelCachePath(host string) (string, error) {
+	dir, err := channelCacheDirectory(host)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "list-channels.json"), nil
+}
+
+func channelCacheDirectory(host string) (string, error) {
 	domain := strings.Map(func(r rune) rune {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '.' || r == '-' || r == '_' {
 			return r
@@ -60,7 +68,7 @@ func channelCachePath(host string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("locate home directory for channel cache: %w", err)
 	}
-	return filepath.Join(home, ".mmcli", "cache", domain, "list-channels.json"), nil
+	return filepath.Join(home, ".mmcli", "cache", domain), nil
 }
 
 func readChannelCache(path, scope string, maxAge time.Duration) (channelList, bool) {

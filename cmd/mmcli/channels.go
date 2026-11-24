@@ -124,12 +124,9 @@ func (c *apiClient) availableChannels(userID string) (map[string]channel, error)
 	if err := c.request(http.MethodGet, userPath+"/channels", nil, nil, &joined); err != nil {
 		return nil, fmt.Errorf("list joined channels: %w", err)
 	}
-	var teams []struct {
-		ID       string `json:"id"`
-		DeleteAt int64  `json:"delete_at"`
-	}
-	if err := c.request(http.MethodGet, userPath+"/teams", nil, nil, &teams); err != nil {
-		return nil, fmt.Errorf("list user teams: %w", err)
+	teams, err := c.userTeamIDs(userID)
+	if err != nil {
+		return nil, err
 	}
 
 	channels := make(map[string]channel, len(joined))
@@ -138,15 +135,30 @@ func (c *apiClient) availableChannels(userID string) (map[string]channel, error)
 			channels[ch.ID] = ch
 		}
 	}
-	for _, team := range teams {
-		if team.ID == "" || team.DeleteAt != 0 {
-			continue
-		}
-		if err := c.addPublicChannels(team.ID, channels); err != nil {
-			return nil, fmt.Errorf("list public channels for team %q: %w", team.ID, err)
+	for _, teamID := range teams {
+		if err := c.addPublicChannels(teamID, channels); err != nil {
+			return nil, fmt.Errorf("list public channels for team %q: %w", teamID, err)
 		}
 	}
 	return channels, nil
+}
+
+func (c *apiClient) userTeamIDs(userID string) ([]string, error) {
+	var teams []struct {
+		ID       string `json:"id"`
+		DeleteAt int64  `json:"delete_at"`
+	}
+	path := "/users/" + pathID(userID) + "/teams"
+	if err := c.request(http.MethodGet, path, nil, nil, &teams); err != nil {
+		return nil, fmt.Errorf("list user teams: %w", err)
+	}
+	var ids []string
+	for _, team := range teams {
+		if team.ID != "" && team.DeleteAt == 0 {
+			ids = append(ids, team.ID)
+		}
+	}
+	return ids, nil
 }
 
 func (c *apiClient) addPublicChannels(teamID string, channels map[string]channel) error {

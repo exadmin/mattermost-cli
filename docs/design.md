@@ -68,7 +68,21 @@ is omitted, the membership list supplies the channel IDs. If the individual
 response omits `last_viewed_at` or returns a nonpositive value, the command
 skips that channel without requesting its messages. If all channels are
 skipped, the result is `{"messages": []}`. Running `read` does not advance
-the timestamp.
+the Mattermost timestamp.
+
+The local polling timestamp is stored as Unix milliseconds in
+`~/.mmcli/cache/<domain>/last-viewed-at/<channel_id>.txt`. The domain uses the
+same host normalization as `list-channels`, and accounts on that host share
+the file. Messages must be newer than both the local polling timestamp and
+the applicable Mattermost read timestamp. The cursor carries the polling window
+across pages. After successfully writing the final page, `read` records the
+start of that window's poll as the lower bound for the next poll.
+
+For replies in a thread, `read` uses the current user's separate
+`last_viewed_at` from Mattermost's followed threads API. Replies with no
+usable thread timestamp are skipped. An unread reply can appear even when
+the channel itself has been viewed more recently. Mattermost returns followed
+direct and group chat threads alongside team threads.
 
 ## `mmcli mark-read`
 

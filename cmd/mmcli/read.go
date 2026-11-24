@@ -23,6 +23,7 @@ type channelMember struct {
 
 type post struct {
 	ID        string `json:"id"`
+	RootID    string `json:"root_id"`
 	ChannelID string `json:"channel_id"`
 	UserID    string `json:"user_id"`
 	CreateAt  int64  `json:"create_at"`
@@ -41,8 +42,10 @@ type boundary struct {
 }
 
 type cursor struct {
-	Scope string   `json:"scope"`
-	After boundary `json:"after"`
+	Scope      string           `json:"scope"`
+	After      boundary         `json:"after"`
+	Through    int64            `json:"through,omitempty"`
+	LastPolled map[string]int64 `json:"last-polled,omitempty"`
 }
 
 type message struct {
@@ -62,9 +65,18 @@ func read(client *apiClient, me user, markerDir, scope string, channels []string
 	slices.Sort(channels)
 	channels = slices.Compact(channels)
 	cursorScope := digest(append([]string{scope}, channels...)...)
-	after, err := decodeCursor(token, cursorScope)
+	poll, err := decodeCursor(token, cursorScope)
 	if err != nil {
 		return err
+	}
+	cacheDir, err := channelCacheDirectory(client.host)
+	if err != nil {
+		return err
+	}
+	if token == "" {
+		// Leave the current millisecond for the next poll.
+		poll.Through = time.Now().UnixMilli() - 1
+		poll.LastPolled = make(map[string]int64)
 	}
 	markers, err := loadMarkers(markerDir)
 	if err != nil {
@@ -74,9 +86,27 @@ func read(client *apiClient, me user, markerDir, scope string, channels []string
 	if err != nil {
 		return err
 	}
+	threads, err := client.threadViews(me.ID, members)
+	if err != nil {
+		return err
+	}
 	var posts []post
 	for _, member := range members {
-		channelPosts, err := client.unreadPosts(member, after, markers)
+		lastPolled, known := poll.LastPolled[member.ChannelID]
+		if token == "" {
+			path, err := lastViewedCachePath(cacheDir, member.ChannelID)
+			if err != nil {
+				return err
+			}
+			lastPolled, err = loadLastViewed(path)
+			if err != nil {
+				return err
+			}
+			poll.LastPolled[member.ChannelID] = lastPolled
+		} else if poll.Through != 0 && !known {
+			continue
+		}
+		channelPosts, err := client.unreadPosts(member, threads[member.ChannelID], poll, lastPolled, markers)
 		if err != nil {
 			return fmt.Errorf("read channel %q: %w", member.ChannelID, err)
 		}
@@ -89,7 +119,8 @@ func read(client *apiClient, me user, markerDir, scope string, channels []string
 	page := readPage{Messages: make([]message, 0)}
 	if len(posts) > limit {
 		posts = posts[:limit]
-		encoded, err := json.Marshal(cursor{Scope: cursorScope, After: postBoundary(posts[limit-1])})
+		poll.After = postBoundary(posts[limit-1])
+		encoded, err := json.Marshal(poll)
 		if err != nil {
 			return err
 		}
@@ -114,22 +145,40 @@ func read(client *apiClient, me user, markerDir, scope string, channels []string
 			Text:      p.Message,
 		})
 	}
-	return writeJSON(out, page)
+	if err := writeJSON(out, page); err != nil {
+		return err
+	}
+	if page.NextCursor == "" && poll.Through > 0 {
+		for _, member := range members {
+			if _, known := poll.LastPolled[member.ChannelID]; !known {
+				continue
+			}
+			path, err := lastViewedCachePath(cacheDir, member.ChannelID)
+			if err != nil {
+				return err
+			}
+			if err := saveLastViewed(path, poll.Through); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
-func decodeCursor(token, scope string) (boundary, error) {
+func decodeCursor(token, scope string) (cursor, error) {
 	if token == "" {
-		return boundary{}, nil
+		return cursor{Scope: scope}, nil
 	}
 	var value cursor
 	data, err := base64.RawURLEncoding.DecodeString(token)
-	if err != nil || json.Unmarshal(data, &value) != nil || value.After.ID == "" {
-		return boundary{}, errors.New("invalid --cursor")
+	if err != nil || json.Unmarshal(data, &value) != nil || value.After.ID == "" ||
+		value.Through < 0 || (value.Through > 0 && len(value.LastPolled) == 0) {
+		return cursor{}, errors.New("invalid --cursor")
 	}
 	if value.Scope != scope {
-		return boundary{}, errors.New("--cursor belongs to a different server, user or channel filter")
+		return cursor{}, errors.New("--cursor belongs to a different server, user or channel filter")
 	}
-	return value.After, nil
+	return value, nil
 }
 
 func postBoundary(p post) boundary {
@@ -204,8 +253,18 @@ func (c *apiClient) memberChannelIDs(userID string) ([]string, error) {
 	}
 }
 
-func (c *apiClient) unreadPosts(member channelMember, after boundary, markers map[string]bool) ([]post, error) {
+func (c *apiClient) unreadPosts(member channelMember, threads map[string]threadView, poll cursor, lastPolled int64, markers map[string]bool) ([]post, error) {
 	var posts []post
+	oldestView := member.LastViewedAt
+	for _, thread := range threads {
+		if thread.LastViewedAt > 0 && (thread.LastReplyAt == 0 || thread.LastReplyAt > thread.LastViewedAt) {
+			oldestView = min(oldestView, thread.LastViewedAt)
+		}
+	}
+	oldestView = max(oldestView, lastPolled)
+	if poll.Through > 0 && oldestView >= poll.Through {
+		return nil, nil
+	}
 	seen := make(map[string]bool)
 	path := "/channels/" + pathID(member.ChannelID) + "/posts"
 	for page := 0; ; page++ {
@@ -220,10 +279,20 @@ func (c *apiClient) unreadPosts(member channelMember, after boundary, markers ma
 			if !ok || p.ID != id || p.ChannelID != member.ChannelID {
 				return nil, errors.New("Mattermost returned an inconsistent post list")
 			}
-			if p.CreateAt <= member.LastViewedAt {
+			if p.CreateAt <= oldestView {
 				return posts, nil
 			}
-			if p.DeleteAt != 0 || seen[id] || (after.ID != "" && compareBoundaries(postBoundary(p), after) <= 0) {
+			if poll.Through > 0 && p.CreateAt > poll.Through {
+				continue
+			}
+			lastViewedAt := member.LastViewedAt
+			if p.RootID != "" {
+				lastViewedAt = threads[p.RootID].LastViewedAt
+			}
+			if lastViewedAt <= 0 || p.CreateAt <= lastViewedAt {
+				continue
+			}
+			if p.DeleteAt != 0 || seen[id] || (poll.After.ID != "" && compareBoundaries(postBoundary(p), poll.After) <= 0) {
 				continue
 			}
 			seen[id] = true
