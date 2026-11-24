@@ -4,7 +4,10 @@
 
 ## Settings
 
-The `MM_CLI_SETTINGS_PATH` environment variable specifies the path to the JSON file from which `mmcli` loads all its settings. The MVP requires two string fields.
+`mmcli` loads all its settings from one JSON file. Use `--cfg PATH` before the
+command or among its options, before any positional arguments. If specified in
+both places, the command option takes precedence. Without `--cfg`, the path
+comes from `MM_CLI_SETTINGS_PATH`. The file requires two string fields.
 
 ```json
 {
@@ -20,7 +23,10 @@ The `MM_CLI_SETTINGS_PATH` environment variable specifies the path to the JSON f
 `mmcli send` appends it directly to each parsed message. Include any desired
 spaces or line breaks in the suffix itself.
 
-If the variable is unset, the file is inaccessible, the JSON is invalid, or a required value is missing, the command exits with a nonzero status and reports the cause without printing the token.
+If no path is configured, the selected file is inaccessible, the JSON is
+invalid, or a required value is missing, the command exits with a nonzero
+status and reports the cause without printing the token. An explicitly
+specified file takes precedence even when it cannot be loaded.
 
 ## Command output
 

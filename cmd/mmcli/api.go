@@ -27,10 +27,12 @@ func (status apiStatusError) Error() string {
 	return fmt.Sprintf("Mattermost returned HTTP %d", status)
 }
 
-func loadClient() (*apiClient, error) {
-	path := os.Getenv("MM_CLI_SETTINGS_PATH")
+func loadClient(path string) (*apiClient, error) {
 	if path == "" {
-		return nil, errors.New("MM_CLI_SETTINGS_PATH is unset or empty")
+		path = os.Getenv("MM_CLI_SETTINGS_PATH")
+	}
+	if path == "" {
+		return nil, errors.New("specify --cfg PATH or set MM_CLI_SETTINGS_PATH")
 	}
 	data, err := os.ReadFile(path)
 	if err != nil {

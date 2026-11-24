@@ -17,6 +17,9 @@ const usage = `Usage:
   mmcli read [--limit N] [--channel LIST] [--cursor TOKEN]
   mmcli mark-read --msg-id LIST
   mmcli list-channels [--force] [find PATTERN]
+
+Options:
+  --cfg PATH  Load settings from PATH. Place before or after the command.
 `
 
 type sendResult struct {
@@ -58,12 +61,25 @@ func writeJSON(out io.Writer, value any) error {
 }
 
 func run(args []string, out io.Writer) error {
+	var settingsPath string
+	globalFlags := flag.NewFlagSet("mmcli", flag.ContinueOnError)
+	globalFlags.SetOutput(io.Discard)
+	globalFlags.StringVar(&settingsPath, "cfg", "", "settings file path")
+	if err := globalFlags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			_, err := io.WriteString(out, usage)
+			return err
+		}
+		return err
+	}
+	args = globalFlags.Args()
 	if len(args) == 0 {
 		return errors.New("expected send, read, mark-read or list-channels (see --help)")
 	}
 	command := args[0]
 	flags := flag.NewFlagSet(command, flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
+	flags.StringVar(&settingsPath, "cfg", settingsPath, "settings file path")
 	var channels, messages, ids, cursorToken string
 	var limit int
 	var force bool
@@ -134,7 +150,10 @@ func run(args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	client, err := loadClient()
+	if settingsPath == "" && (provided["cfg"] || globalFlags.NFlag() != 0) {
+		return errors.New("--cfg must specify a nonempty settings file path")
+	}
+	client, err := loadClient(settingsPath)
 	if err != nil {
 		return err
 	}
