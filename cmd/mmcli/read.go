@@ -154,21 +154,34 @@ func pageQuery(page int) url.Values {
 }
 
 func (c *apiClient) memberships(userID string, channels []string) ([]channelMember, error) {
-	var members []channelMember
-	if len(channels) != 0 {
-		for _, channelID := range channels {
-			var member channelMember
-			path := "/channels/" + pathID(channelID) + "/members/" + pathID(userID)
-			if err := c.request(http.MethodGet, path, nil, nil, &member); err != nil {
-				return nil, fmt.Errorf("get membership for channel %q: %w", channelID, err)
-			}
-			if member.ChannelID != channelID {
-				return nil, errors.New("Mattermost returned an unexpected channel membership")
-			}
-			members = append(members, member)
+	if len(channels) == 0 {
+		var err error
+		channels, err = c.memberChannelIDs(userID)
+		if err != nil {
+			return nil, err
 		}
-		return members, nil
 	}
+
+	members := make([]channelMember, 0, len(channels))
+	for _, channelID := range channels {
+		var member channelMember
+		path := "/channels/" + pathID(channelID) + "/members/" + pathID(userID)
+		if err := c.request(http.MethodGet, path, nil, nil, &member); err != nil {
+			return nil, fmt.Errorf("get membership for channel %q: %w", channelID, err)
+		}
+		if member.ChannelID != channelID {
+			return nil, fmt.Errorf("Mattermost returned an unexpected membership for channel %q", channelID)
+		}
+		if member.LastViewedAt <= 0 {
+			continue
+		}
+		members = append(members, member)
+	}
+	return members, nil
+}
+
+func (c *apiClient) memberChannelIDs(userID string) ([]string, error) {
+	var channels []string
 	path := "/users/" + pathID(userID) + "/channel_members"
 	seen := make(map[string]bool)
 	for page := 0; ; page++ {
@@ -181,12 +194,12 @@ func (c *apiClient) memberships(userID string, channels []string) ([]channelMemb
 				return nil, errors.New("Mattermost returned a membership without a channel ID")
 			}
 			if !seen[member.ChannelID] {
-				members = append(members, member)
+				channels = append(channels, member.ChannelID)
 				seen[member.ChannelID] = true
 			}
 		}
 		if len(batch) < apiPageSize {
-			return members, nil
+			return channels, nil
 		}
 	}
 }

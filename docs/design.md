@@ -57,6 +57,14 @@ The result contains a `messages` array. Each message contains the following fiel
 
 When another page is available, the command returns `next-cursor`. Pass it as `--cursor` with the same channel filter. Request the first page again to see new messages. Read status can change between requests, so subsequent pages reflect the current unread state. The `read` command preserves read status in both Mattermost and `mmcli`.
 
+For each selected channel, `read` requests the current user's `last_viewed_at`
+directly from the Mattermost channel membership endpoint. When `--channel`
+is omitted, the membership list supplies the channel IDs. If the individual
+response omits `last_viewed_at` or returns a nonpositive value, the command
+skips that channel without requesting its messages. If all channels are
+skipped, the result is `{"messages": []}`. Running `read` does not advance
+the timestamp.
+
 ## `mmcli mark-read`
 
 ```text
