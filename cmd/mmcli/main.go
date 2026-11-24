@@ -7,13 +7,16 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
+	"slices"
+	"strings"
 )
 
 const usage = `Usage:
   mmcli send --channel LIST --text LIST
   mmcli read [--limit N] [--channel LIST] [--cursor TOKEN]
   mmcli mark-read --msg-id LIST
-  mmcli list-channels [--force]
+  mmcli list-channels [--force] [find PATTERN]
 `
 
 type sendResult struct {
@@ -89,7 +92,19 @@ func run(args []string, out io.Writer) error {
 		}
 		return err
 	}
-	if flags.NArg() != 0 {
+	var find *regexp.Regexp
+	if command == "list-channels" && flags.NArg() != 0 {
+		if flags.NArg() != 2 || flags.Arg(0) != "find" {
+			return errors.New("expected list-channels [--force] [find PATTERN]")
+		}
+		pattern := strings.NewReplacer("%", ".*", "_", ".").Replace(regexp.QuoteMeta(flags.Arg(1)))
+		var err error
+		// An unanchored match supplies the implicit leading and trailing SQL %.
+		find, err = regexp.Compile("(?is)" + pattern)
+		if err != nil {
+			return fmt.Errorf("invalid find pattern: %w", err)
+		}
+	} else if flags.NArg() != 0 {
 		return errors.New("unexpected positional arguments")
 	}
 	provided := make(map[string]bool)
@@ -127,7 +142,16 @@ func run(args []string, out io.Writer) error {
 		return send(client, channelIDs, texts, out)
 	}
 	if command == "list-channels" {
-		return listChannels(client, force, out)
+		result, err := client.channelList(force)
+		if err != nil {
+			return err
+		}
+		if find != nil {
+			result.Channels = slices.DeleteFunc(result.Channels, func(ch listedChannel) bool {
+				return !find.MatchString(ch.VisualName)
+			})
+		}
+		return writeJSON(out, result)
 	}
 	user, err := client.currentUser()
 	if err != nil {

@@ -19,26 +19,26 @@ type channelCache struct {
 	Result channelList `json:"result"`
 }
 
-func listChannels(client *apiClient, force bool, out io.Writer) error {
-	path, err := channelCachePath(client.host)
+func (c *apiClient) channelList(force bool) (channelList, error) {
+	path, err := channelCachePath(c.host)
 	if err != nil {
-		return err
+		return channelList{}, err
 	}
-	scope := digest(client.base, client.token)
+	scope := digest(c.base, c.token)
 	if !force {
 		if result, ok := readChannelCache(path, scope); ok {
-			return writeJSON(out, result)
+			return result, nil
 		}
 	}
 
-	result, err := client.fetchChannelList()
+	result, err := c.fetchChannelList()
 	if err != nil {
-		return err
+		return channelList{}, err
 	}
 	if err := saveChannelCache(path, channelCache{Scope: scope, Result: result}); err != nil {
-		return fmt.Errorf("save channel cache: %w", err)
+		return channelList{}, fmt.Errorf("save channel cache: %w", err)
 	}
-	return writeJSON(out, result)
+	return result, nil
 }
 
 func channelCachePath(host string) (string, error) {
