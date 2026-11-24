@@ -26,6 +26,52 @@ type channelList struct {
 	Channels []listedChannel `json:"channels"`
 }
 
+const mattermostChannelIDLength = 26
+
+func (c *apiClient) resolveChannelIDs(ids []string) error {
+	var cached channelList
+	cacheLoaded := false
+	for i, id := range ids {
+		if len(id) == mattermostChannelIDLength {
+			continue
+		}
+		if !cacheLoaded {
+			path, err := channelCachePath(c.host)
+			if err == nil {
+				cached, _ = readChannelCache(path, digest(c.base, c.token), 0)
+			}
+			cacheLoaded = true
+		}
+		fullID, err := cached.resolveChannelID(id)
+		if err != nil {
+			return err
+		}
+		ids[i] = fullID
+	}
+	return nil
+}
+
+func (list channelList) resolveChannelID(prefix string) (string, error) {
+	var match string
+	ambiguous := false
+	for _, ch := range list.Channels {
+		if ch.ID == prefix {
+			return ch.ID, nil
+		}
+		if strings.HasPrefix(ch.ID, prefix) {
+			ambiguous = ambiguous || (match != "" && match != ch.ID)
+			match = ch.ID
+		}
+	}
+	if ambiguous {
+		return "", fmt.Errorf("Ambiguous channel ID prefix %q. Please specify more characters.", prefix)
+	}
+	if match == "" {
+		return "", fmt.Errorf("Unknown channel ID prefix %q. Run mmcli list-channels --force to refresh the cache, or use the full channel ID.", prefix)
+	}
+	return match, nil
+}
+
 func (c *apiClient) fetchChannelList() (channelList, error) {
 	me, err := c.currentUser()
 	if err != nil {

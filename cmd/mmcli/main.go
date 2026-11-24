@@ -138,6 +138,9 @@ func run(args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if err := client.resolveChannelIDs(channelIDs); err != nil {
+		return err
+	}
 	if command == "send" {
 		return send(client, channelIDs, texts, out)
 	}

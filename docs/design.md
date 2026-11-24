@@ -108,6 +108,19 @@ A missing, expired, invalid or mismatched cache triggers a server request.
 `--force` always fetches from Mattermost. A successful fetch replaces the cache.
 A failed fetch keeps any previous file and reports the error.
 
+## Channel ID prefixes
+
+`send --channel` and `read --channel` accept full channel IDs or prefixes such
+as `abcd`. Prefixes match channel IDs case-sensitively in the local
+`list-channels` cache for the configured server and token. Resolution can use
+an expired cache and performs no server requests. Exact matches take
+precedence, and full Mattermost IDs can be used without a cache.
+
+All supplied prefixes are resolved before the command contacts Mattermost.
+An ambiguous prefix returns an error asking for more characters. An unknown
+prefix or missing usable cache returns an error suggesting
+`mmcli list-channels --force` or a full channel ID.
+
 ## Lists and quoting
 
 `--channel`, `--text`, and `--msg-id` share the same list syntax. A comma outside double quotes separates items. Inside double quotes, commas and spaces are preserved, and two consecutive double quotes represent a literal double quote. Unclosed quotes, empty items, and messages containing only whitespace are errors.

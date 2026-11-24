@@ -26,7 +26,7 @@ func (c *apiClient) channelList(force bool) (channelList, error) {
 	}
 	scope := digest(c.base, c.token)
 	if !force {
-		if result, ok := readChannelCache(path, scope); ok {
+		if result, ok := readChannelCache(path, scope, channelCacheTTL); ok {
 			return result, nil
 		}
 	}
@@ -63,7 +63,7 @@ func channelCachePath(host string) (string, error) {
 	return filepath.Join(home, ".mmcli", "cache", domain, "list-channels.json"), nil
 }
 
-func readChannelCache(path, scope string) (channelList, bool) {
+func readChannelCache(path, scope string, maxAge time.Duration) (channelList, bool) {
 	file, err := os.Open(path)
 	if err != nil {
 		return channelList{}, false
@@ -74,7 +74,7 @@ func readChannelCache(path, scope string) (channelList, bool) {
 		return channelList{}, false
 	}
 	age := time.Since(info.ModTime())
-	if age < 0 || age >= channelCacheTTL {
+	if maxAge > 0 && (age < 0 || age >= maxAge) {
 		return channelList{}, false
 	}
 	var cache channelCache
